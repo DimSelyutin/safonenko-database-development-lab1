@@ -1,0 +1,36 @@
+@model IEnumerable<StockMovement>
+@{
+    ViewData["Title"] = "Движение товара";
+}
+
+<h2>Движение товара</h2>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Дата</th>
+            <th>Операция</th>
+            <th>Количество</th>
+            <th>Товар</th>
+            <th>Поставщик</th>
+            <th>Место хранения</th>
+            <th>Документ</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var item in Model)
+    {
+        <tr>
+            <td>@item.Date.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+            <td>@(item.OperationType == StockMovementType.Income ? "Приход" : "Расход")</td>
+            <td>@item.Quantity</td>
+            <td>@item.Product?.Name</td>
+            <td>@item.Supplier?.Name</td>
+            <td>@item.StorageLocation?.DisplayName</td>
+            <td>@item.DocumentBase</td>
+            <td><a asp-action="Details" asp-route-id="@item.Id">Подробнее</a></td>
+        </tr>
+    }
+    </tbody>
+</table>

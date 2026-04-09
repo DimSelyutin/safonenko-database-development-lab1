@@ -1,0 +1,30 @@
+@model IEnumerable<StockBalanceViewModel>
+@{
+    ViewData["Title"] = "Остатки товаров";
+}
+
+<h2>Отчет об остатках</h2>
+
+<table class="table table-bordered table-striped">
+    <thead>
+        <tr>
+            <th>Артикул</th>
+            <th>Товар</th>
+            <th>Категория</th>
+            <th>Текущий остаток</th>
+            <th>Мин.остаток</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var item in Model)
+    {
+        <tr>
+            <td>@item.Article</td>
+            <td>@item.ProductName</td>
+            <td>@item.CategoryName</td>
+            <td>@item.CurrentStock</td>
+            <td>@item.MinStock</td>
+        </tr>
+    }
+    </tbody>
+</table>

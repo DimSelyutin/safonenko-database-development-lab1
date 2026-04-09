@@ -1,0 +1,31 @@
+@model StockMovement
+@{
+    ViewData["Title"] = "Детали операции";
+}
+
+<h2>Операция движения</h2>
+
+<dl class="row">
+    <dt class="col-sm-3">Дата</dt>
+    <dd class="col-sm-9">@Model.Date.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</dd>
+
+    <dt class="col-sm-3">Тип операции</dt>
+    <dd class="col-sm-9">@(Model.OperationType == StockMovementType.Income ? "Приход" : "Расход")</dd>
+
+    <dt class="col-sm-3">Товар</dt>
+    <dd class="col-sm-9">@Model.Product?.Name (@Model.Product?.Article)</dd>
+
+    <dt class="col-sm-3">Поставщик</dt>
+    <dd class="col-sm-9">@Model.Supplier?.Name</dd>
+
+    <dt class="col-sm-3">Место хранения</dt>
+    <dd class="col-sm-9">@Model.StorageLocation?.DisplayName</dd>
+
+    <dt class="col-sm-3">Количество</dt>
+    <dd class="col-sm-9">@Model.Quantity</dd>
+
+    <dt class="col-sm-3">Документ-основание</dt>
+    <dd class="col-sm-9">@Model.DocumentBase</dd>
+</dl>
+
+<a asp-action="Index">Назад</a>

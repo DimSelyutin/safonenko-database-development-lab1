@@ -1,0 +1,27 @@
+@model Category
+@{
+    ViewData["Title"] = "Категория";
+}
+
+<h2>@Model.Name</h2>
+
+<h4>Товары в категории</h4>
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Артикул</th>
+            <th>Название</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var p in Model.Products)
+    {
+        <tr>
+            <td>@p.Article</td>
+            <td>@p.Name</td>
+        </tr>
+    }
+    </tbody>
+</table>
+
+<a asp-action="Index">Назад</a>

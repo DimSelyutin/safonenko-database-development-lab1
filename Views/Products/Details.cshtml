@@ -1,0 +1,24 @@
+@model Product
+@{
+    ViewData["Title"] = "Товар";
+}
+
+<h2>@Model.Name</h2>
+<dl class="row">
+    <dt class="col-sm-3">Артикул</dt>
+    <dd class="col-sm-9">@Model.Article</dd>
+
+    <dt class="col-sm-3">Единица измерения</dt>
+    <dd class="col-sm-9">@Model.Unit</dd>
+
+    <dt class="col-sm-3">Вес</dt>
+    <dd class="col-sm-9">@Model.Weight</dd>
+
+    <dt class="col-sm-3">Категория</dt>
+    <dd class="col-sm-9">@Model.Category?.Name</dd>
+
+    <dt class="col-sm-3">Минимальный запас</dt>
+    <dd class="col-sm-9">@Model.MinStock</dd>
+</dl>
+
+<a asp-action="Index">Назад</a>

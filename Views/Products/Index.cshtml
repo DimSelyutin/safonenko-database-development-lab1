@@ -1,0 +1,43 @@
+@model IEnumerable<Product>
+@{
+    ViewData["Title"] = "Товары";
+}
+
+<h2>Товары</h2>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-auto">
+        <input class="form-control" type="text" name="search" value="@ViewBag.Search" placeholder="Артикул или название" />
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" type="submit">Поиск</button>
+    </div>
+</form>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Артикул</th>
+            <th>Название</th>
+            <th>Ед.изм</th>
+            <th>Вес</th>
+            <th>Категория</th>
+            <th>Мин.остаток</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var p in Model)
+    {
+        <tr>
+            <td>@p.Article</td>
+            <td>@p.Name</td>
+            <td>@p.Unit</td>
+            <td>@p.Weight</td>
+            <td>@p.Category?.Name</td>
+            <td>@p.MinStock</td>
+            <td><a asp-action="Details" asp-route-id="@p.Id">Подробнее</a></td>
+        </tr>
+    }
+    </tbody>
+</table>

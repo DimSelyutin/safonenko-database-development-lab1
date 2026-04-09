@@ -1,0 +1,37 @@
+@model IEnumerable<StockBalanceViewModel>
+@{
+    ViewData["Title"] = "Товары ниже минимума";
+}
+
+<h2>Товары, требующие пополнения</h2>
+
+@if (!Model.Any())
+{
+    <p>Все товары выше минимального запаса.</p>
+}
+else
+{
+    <table class="table table-danger table-striped">
+        <thead>
+            <tr>
+                <th>Артикул</th>
+                <th>Товар</th>
+                <th>Остаток</th>
+                <th>Минимум</th>
+                <th>Дефицит</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var item in Model)
+        {
+            <tr>
+                <td>@item.Article</td>
+                <td>@item.ProductName</td>
+                <td>@item.CurrentStock</td>
+                <td>@item.MinStock</td>
+                <td>@(item.MinStock - item.CurrentStock)</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
