@@ -1,0 +1,1147 @@
+# ОТЧЕТ ПО ПРОЕКТУ
+
+## 1. Ссылка на репозиторий с исходным кодом проекта на GitHub
+
+https://github.com/DimSelyutin/safonenko-database-development-lab1
+
+## 2. Тексты исходных кодов стартового класса Program.cs, классов моделей и класса контекста данных
+
+### 2.1 Program.cs
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using safonenko.Data;
+using safonenko.Middleware;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllersWithViews(options =>
+{
+    options.CacheProfiles.Add("WarehouseCache", new Microsoft.AspNetCore.Mvc.CacheProfile
+    {
+        Duration = 268,
+        Location = Microsoft.AspNetCore.Mvc.ResponseCacheLocation.Any,
+        NoStore = false
+    });
+});
+
+builder.Services.AddDbContext<WarehouseContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddResponseCaching();
+
+var app = builder.Build();
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Home/Error");
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+app.UseRouting();
+
+app.UseResponseCaching();
+app.UseMiddleware<DatabaseSeedMiddleware>();
+
+app.UseAuthorization();
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
+
+app.Run();
+```
+
+### 2.2 Классы моделей
+
+#### Models/Category.cs
+
+```csharp
+using System.ComponentModel.DataAnnotations;
+
+namespace safonenko.Models;
+
+public class Category
+{
+    public int Id { get; set; }
+
+    [Required]
+    [StringLength(100)]
+    public string Name { get; set; } = string.Empty;
+
+    public ICollection<Product> Products { get; set; } = new List<Product>();
+}
+```
+
+#### Models/Product.cs
+
+```csharp
+using System.ComponentModel.DataAnnotations;
+
+namespace safonenko.Models;
+
+public class Product
+{
+    public int Id { get; set; }
+
+    [Required]
+    [StringLength(50)]
+    public string Article { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(20)]
+    public string Unit { get; set; } = string.Empty;
+
+    [Range(0.001, 100000)]
+    public decimal Weight { get; set; }
+
+    [Range(0, int.MaxValue)]
+    public decimal MinStock { get; set; }
+
+    public int CategoryId { get; set; }
+    public Category? Category { get; set; }
+
+    public ICollection<StockMovement> StockMovements { get; set; } = new List<StockMovement>();
+}
+```
+
+#### Models/StorageLocation.cs
+
+```csharp
+using System.ComponentModel.DataAnnotations;
+
+namespace safonenko.Models;
+
+public class StorageLocation
+{
+    public int Id { get; set; }
+
+    [Required]
+    [StringLength(10)]
+    public string Row { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(10)]
+    public string Shelf { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(10)]
+    public string Cell { get; set; } = string.Empty;
+
+    public ICollection<StockMovement> StockMovements { get; set; } = new List<StockMovement>();
+
+    public string DisplayName => $"Ряд {Row}, Полка {Shelf}, Ячейка {Cell}";
+}
+```
+
+#### Models/Supplier.cs
+
+```csharp
+using System.ComponentModel.DataAnnotations;
+
+namespace safonenko.Models;
+
+public class Supplier
+{
+    public int Id { get; set; }
+
+    [Required]
+    [StringLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(300)]
+    public string Details { get; set; } = string.Empty;
+
+    public ICollection<StockMovement> StockMovements { get; set; } = new List<StockMovement>();
+}
+```
+
+#### Models/StockMovementType.cs
+
+```csharp
+namespace safonenko.Models;
+
+public enum StockMovementType
+{
+    Income = 1,
+    Outcome = 2
+}
+```
+
+#### Models/StockMovement.cs
+
+```csharp
+using System.ComponentModel.DataAnnotations;
+
+namespace safonenko.Models;
+
+public class StockMovement
+{
+    public int Id { get; set; }
+
+    public DateTime Date { get; set; }
+
+    public StockMovementType OperationType { get; set; }
+
+    [Range(0.001, 1000000)]
+    public decimal Quantity { get; set; }
+
+    [Required]
+    [StringLength(100)]
+    public string DocumentBase { get; set; } = string.Empty;
+
+    public int ProductId { get; set; }
+    public Product? Product { get; set; }
+
+    public int SupplierId { get; set; }
+    public Supplier? Supplier { get; set; }
+
+    public int StorageLocationId { get; set; }
+    public StorageLocation? StorageLocation { get; set; }
+}
+```
+
+### 2.3 Класс контекста данных (Data/WarehouseContext.cs)
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using safonenko.Models;
+
+namespace safonenko.Data;
+
+public class WarehouseContext(DbContextOptions<WarehouseContext> options) : DbContext(options)
+{
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<StorageLocation> StorageLocations => Set<StorageLocation>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<StockMovement> StockMovements => Set<StockMovement>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Category>()
+            .HasIndex(c => c.Name)
+            .IsUnique();
+
+        modelBuilder.Entity<Product>()
+            .HasIndex(p => p.Article)
+            .IsUnique();
+
+        modelBuilder.Entity<Product>()
+            .HasOne(p => p.Category)
+            .WithMany(c => c.Products)
+            .HasForeignKey(p => p.CategoryId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<StorageLocation>()
+            .HasIndex(l => new { l.Row, l.Shelf, l.Cell })
+            .IsUnique();
+
+        modelBuilder.Entity<StockMovement>()
+            .HasOne(m => m.Product)
+            .WithMany(p => p.StockMovements)
+            .HasForeignKey(m => m.ProductId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<StockMovement>()
+            .HasOne(m => m.Supplier)
+            .WithMany(s => s.StockMovements)
+            .HasForeignKey(m => m.SupplierId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<StockMovement>()
+            .HasOne(m => m.StorageLocation)
+            .WithMany(l => l.StockMovements)
+            .HasForeignKey(m => m.StorageLocationId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+```
+
+## 3. Строка подключения к базе данных из конфигурационного файла
+
+Файл: `appsettings.json`
+
+```json
+"DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=WarehouseDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True"
+```
+
+## 4. Текст исходного кода middleware для инициализации базы данных тестовыми данными
+
+Файл: `Middleware/DatabaseSeedMiddleware.cs`
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using safonenko.Data;
+using safonenko.Models;
+
+namespace safonenko.Middleware;
+
+public class DatabaseSeedMiddleware(RequestDelegate next)
+{
+    private static bool _seedCompleted;
+    private static readonly object SeedLock = new();
+
+    public async Task InvokeAsync(HttpContext context, WarehouseContext db)
+    {
+        if (!_seedCompleted)
+        {
+            await EnsureSeededAsync(db);
+        }
+
+        await next(context);
+    }
+
+    private static async Task EnsureSeededAsync(WarehouseContext db)
+    {
+        lock (SeedLock)
+        {
+            if (_seedCompleted)
+            {
+                return;
+            }
+        }
+
+        await db.Database.MigrateAsync();
+
+        if (!await db.Categories.AnyAsync())
+        {
+            db.Categories.AddRange(
+                new Category { Name = "Сухие смеси" },
+                new Category { Name = "Инструменты" },
+                new Category { Name = "Крепеж" });
+            await db.SaveChangesAsync();
+        }
+
+        if (!await db.StorageLocations.AnyAsync())
+        {
+            db.StorageLocations.AddRange(
+                new StorageLocation { Row = "A", Shelf = "1", Cell = "01" },
+                new StorageLocation { Row = "A", Shelf = "1", Cell = "02" },
+                new StorageLocation { Row = "B", Shelf = "3", Cell = "11" });
+            await db.SaveChangesAsync();
+        }
+
+        if (!await db.Suppliers.AnyAsync())
+        {
+            db.Suppliers.AddRange(
+                new Supplier { Name = "ООО СтройПоставка", Details = "ИНН 770000001, Москва" },
+                new Supplier { Name = "ИП Инструмент-Сервис", Details = "ИНН 770000002, Тула" },
+                new Supplier { Name = "ЗАО КрепМаркет", Details = "ИНН 770000003, Санкт-Петербург" });
+            await db.SaveChangesAsync();
+        }
+
+        if (!await db.Products.AnyAsync())
+        {
+            var categories = await db.Categories.ToListAsync();
+
+            db.Products.AddRange(
+                new Product
+                {
+                    Article = "SM-001",
+                    Name = "Штукатурка гипсовая",
+                    Unit = "мешок",
+                    Weight = 25,
+                    MinStock = 20,
+                    CategoryId = categories.Single(c => c.Name == "Сухие смеси").Id
+                },
+                new Product
+                {
+                    Article = "IN-017",
+                    Name = "Шпатель 250 мм",
+                    Unit = "шт",
+                    Weight = 0.35m,
+                    MinStock = 15,
+                    CategoryId = categories.Single(c => c.Name == "Инструменты").Id
+                },
+                new Product
+                {
+                    Article = "KR-120",
+                    Name = "Саморез 4.2x75",
+                    Unit = "уп",
+                    Weight = 1.2m,
+                    MinStock = 30,
+                    CategoryId = categories.Single(c => c.Name == "Крепеж").Id
+                });
+            await db.SaveChangesAsync();
+        }
+
+        if (!await db.StockMovements.AnyAsync())
+        {
+            var products = await db.Products.ToListAsync();
+            var suppliers = await db.Suppliers.ToListAsync();
+            var locations = await db.StorageLocations.ToListAsync();
+
+            db.StockMovements.AddRange(
+                new StockMovement
+                {
+                    Date = DateTime.UtcNow.AddDays(-5),
+                    OperationType = StockMovementType.Income,
+                    Quantity = 60,
+                    DocumentBase = "Накладная №101",
+                    ProductId = products.Single(p => p.Article == "SM-001").Id,
+                    SupplierId = suppliers.First().Id,
+                    StorageLocationId = locations.First().Id
+                },
+                new StockMovement
+                {
+                    Date = DateTime.UtcNow.AddDays(-3),
+                    OperationType = StockMovementType.Outcome,
+                    Quantity = 44,
+                    DocumentBase = "Требование №17",
+                    ProductId = products.Single(p => p.Article == "SM-001").Id,
+                    SupplierId = suppliers.First().Id,
+                    StorageLocationId = locations.First().Id
+                },
+                new StockMovement
+                {
+                    Date = DateTime.UtcNow.AddDays(-2),
+                    OperationType = StockMovementType.Income,
+                    Quantity = 18,
+                    DocumentBase = "Накладная №220",
+                    ProductId = products.Single(p => p.Article == "IN-017").Id,
+                    SupplierId = suppliers[1].Id,
+                    StorageLocationId = locations[1].Id
+                },
+                new StockMovement
+                {
+                    Date = DateTime.UtcNow.AddDays(-1),
+                    OperationType = StockMovementType.Income,
+                    Quantity = 25,
+                    DocumentBase = "Накладная №335",
+                    ProductId = products.Single(p => p.Article == "KR-120").Id,
+                    SupplierId = suppliers[2].Id,
+                    StorageLocationId = locations[2].Id
+                });
+            await db.SaveChangesAsync();
+        }
+
+        lock (SeedLock)
+        {
+            _seedCompleted = true;
+        }
+    }
+}
+```
+
+## 5. Тексты исходных кодов контроллеров (cs) и представлений (cshtml)
+
+### 5.1 Контроллеры
+
+#### Controllers/HomeController.cs
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+
+namespace safonenko.Controllers;
+
+public class HomeController : Controller
+{
+    public IActionResult Index()
+    {
+        return View();
+    }
+}
+```
+
+#### Controllers/CategoriesController.cs
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using safonenko.Data;
+
+namespace safonenko.Controllers;
+
+public class CategoriesController(WarehouseContext db) : Controller
+{
+    [ResponseCache(CacheProfileName = "WarehouseCache")]
+    public async Task<IActionResult> Index()
+    {
+        var categories = await db.Categories
+            .AsNoTracking()
+            .OrderBy(c => c.Name)
+            .ToListAsync();
+
+        return View(categories);
+    }
+
+    public async Task<IActionResult> Details(int id)
+    {
+        var category = await db.Categories
+            .AsNoTracking()
+            .Include(c => c.Products)
+            .FirstOrDefaultAsync(c => c.Id == id);
+
+        if (category is null)
+        {
+            return NotFound();
+        }
+
+        return View(category);
+    }
+}
+```
+
+#### Controllers/ProductsController.cs
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using safonenko.Data;
+using safonenko.Models;
+using safonenko.ViewModels;
+
+namespace safonenko.Controllers;
+
+public class ProductsController(WarehouseContext db) : Controller
+{
+    [ResponseCache(CacheProfileName = "WarehouseCache")]
+    public async Task<IActionResult> Index(string? search)
+    {
+        var query = db.Products
+            .AsNoTracking()
+            .Include(p => p.Category)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            search = search.Trim();
+            query = query.Where(p => p.Article.Contains(search) || p.Name.Contains(search));
+        }
+
+        ViewBag.Search = search;
+        var products = await query.OrderBy(p => p.Name).ToListAsync();
+        return View(products);
+    }
+
+    public async Task<IActionResult> Details(int id)
+    {
+        var product = await db.Products
+            .AsNoTracking()
+            .Include(p => p.Category)
+            .FirstOrDefaultAsync(p => p.Id == id);
+
+        if (product is null)
+        {
+            return NotFound();
+        }
+
+        return View(product);
+    }
+
+    [ResponseCache(CacheProfileName = "WarehouseCache")]
+    public async Task<IActionResult> Balances()
+    {
+        var movements = db.StockMovements.AsNoTracking();
+        var products = db.Products.AsNoTracking().Include(p => p.Category);
+
+        var balance = await products
+            .Select(p => new StockBalanceViewModel
+            {
+                ProductId = p.Id,
+                Article = p.Article,
+                ProductName = p.Name,
+                CategoryName = p.Category != null ? p.Category.Name : string.Empty,
+                MinStock = p.MinStock,
+                CurrentStock = movements
+                    .Where(m => m.ProductId == p.Id)
+                    .Select(m => m.OperationType == StockMovementType.Income ? m.Quantity : -m.Quantity)
+                    .DefaultIfEmpty(0)
+                    .Sum()
+            })
+            .OrderBy(v => v.ProductName)
+            .ToListAsync();
+
+        return View(balance);
+    }
+
+    [ResponseCache(CacheProfileName = "WarehouseCache")]
+    public async Task<IActionResult> ReorderList()
+    {
+        var balance = await GetBalancesAsync();
+        var reorder = balance.Where(x => x.CurrentStock < x.MinStock).ToList();
+        return View(reorder);
+    }
+
+    private async Task<List<StockBalanceViewModel>> GetBalancesAsync()
+    {
+        var movements = db.StockMovements.AsNoTracking();
+
+        return await db.Products
+            .AsNoTracking()
+            .Include(p => p.Category)
+            .Select(p => new StockBalanceViewModel
+            {
+                ProductId = p.Id,
+                Article = p.Article,
+                ProductName = p.Name,
+                CategoryName = p.Category != null ? p.Category.Name : string.Empty,
+                MinStock = p.MinStock,
+                CurrentStock = movements
+                    .Where(m => m.ProductId == p.Id)
+                    .Select(m => m.OperationType == StockMovementType.Income ? m.Quantity : -m.Quantity)
+                    .DefaultIfEmpty(0)
+                    .Sum()
+            })
+            .OrderBy(x => x.ProductName)
+            .ToListAsync();
+    }
+}
+```
+
+#### Controllers/StockMovementsController.cs
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using safonenko.Data;
+
+namespace safonenko.Controllers;
+
+public class StockMovementsController(WarehouseContext db) : Controller
+{
+    [ResponseCache(CacheProfileName = "WarehouseCache")]
+    public async Task<IActionResult> Index()
+    {
+        var movements = await db.StockMovements
+            .AsNoTracking()
+            .Include(m => m.Product)
+            .Include(m => m.Supplier)
+            .Include(m => m.StorageLocation)
+            .OrderByDescending(m => m.Date)
+            .ToListAsync();
+
+        return View(movements);
+    }
+
+    public async Task<IActionResult> Details(int id)
+    {
+        var movement = await db.StockMovements
+            .AsNoTracking()
+            .Include(m => m.Product)
+            .Include(m => m.Supplier)
+            .Include(m => m.StorageLocation)
+            .FirstOrDefaultAsync(m => m.Id == id);
+
+        if (movement is null)
+        {
+            return NotFound();
+        }
+
+        return View(movement);
+    }
+}
+```
+
+### 5.2 Представления (cshtml)
+
+#### Views/_ViewImports.cshtml
+
+```cshtml
+@using safonenko
+@using safonenko.Models
+@using safonenko.ViewModels
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+```
+
+#### Views/_ViewStart.cshtml
+
+```cshtml
+@{
+    Layout = "_Layout";
+}
+```
+
+#### Views/Shared/_Layout.cshtml
+
+```cshtml
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Склад стройматериалов</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-sm navbar-light bg-light border-bottom mb-3">
+            <div class="container">
+                <a class="navbar-brand" asp-controller="Home" asp-action="Index">Склад</a>
+                <div class="navbar-nav">
+                    <a class="nav-link" asp-controller="Products" asp-action="Index">Товары</a>
+                    <a class="nav-link" asp-controller="Categories" asp-action="Index">Категории</a>
+                    <a class="nav-link" asp-controller="StockMovements" asp-action="Index">Движение</a>
+                    <a class="nav-link" asp-controller="Products" asp-action="Balances">Остатки</a>
+                    <a class="nav-link" asp-controller="Products" asp-action="ReorderList">Ниже минимума</a>
+                </div>
+            </div>
+        </nav>
+    </header>
+    <main class="container pb-3">
+        @RenderBody()
+    </main>
+</body>
+</html>
+```
+
+#### Views/Home/Index.cshtml
+
+```cshtml
+@{
+    ViewData["Title"] = "Главная";
+}
+
+<h1>Склад стройматериалов</h1>
+<p>Приложение для учета товаров, движений и отчетов по остаткам.</p>
+```
+
+#### Views/Categories/Index.cshtml
+
+```cshtml
+@model IEnumerable<Category>
+@{
+    ViewData["Title"] = "Категории";
+}
+
+<h2>Категории</h2>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Название</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var item in Model)
+    {
+        <tr>
+            <td>@item.Name</td>
+            <td>
+                <a asp-action="Details" asp-route-id="@item.Id">Подробнее</a>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+```
+
+#### Views/Categories/Details.cshtml
+
+```cshtml
+@model Category
+@{
+    ViewData["Title"] = "Категория";
+}
+
+<h2>@Model.Name</h2>
+
+<h4>Товары в категории</h4>
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Артикул</th>
+            <th>Название</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var p in Model.Products)
+    {
+        <tr>
+            <td>@p.Article</td>
+            <td>@p.Name</td>
+        </tr>
+    }
+    </tbody>
+</table>
+
+<a asp-action="Index">Назад</a>
+```
+
+#### Views/Products/Index.cshtml
+
+```cshtml
+@model IEnumerable<Product>
+@{
+    ViewData["Title"] = "Товары";
+}
+
+<h2>Товары</h2>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-auto">
+        <input class="form-control" type="text" name="search" value="@ViewBag.Search" placeholder="Артикул или название" />
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" type="submit">Поиск</button>
+    </div>
+</form>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Артикул</th>
+            <th>Название</th>
+            <th>Ед.изм</th>
+            <th>Вес</th>
+            <th>Категория</th>
+            <th>Мин.остаток</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var p in Model)
+    {
+        <tr>
+            <td>@p.Article</td>
+            <td>@p.Name</td>
+            <td>@p.Unit</td>
+            <td>@p.Weight</td>
+            <td>@p.Category?.Name</td>
+            <td>@p.MinStock</td>
+            <td><a asp-action="Details" asp-route-id="@p.Id">Подробнее</a></td>
+        </tr>
+    }
+    </tbody>
+</table>
+```
+
+#### Views/Products/Details.cshtml
+
+```cshtml
+@model Product
+@{
+    ViewData["Title"] = "Товар";
+}
+
+<h2>@Model.Name</h2>
+<dl class="row">
+    <dt class="col-sm-3">Артикул</dt>
+    <dd class="col-sm-9">@Model.Article</dd>
+
+    <dt class="col-sm-3">Единица измерения</dt>
+    <dd class="col-sm-9">@Model.Unit</dd>
+
+    <dt class="col-sm-3">Вес</dt>
+    <dd class="col-sm-9">@Model.Weight</dd>
+
+    <dt class="col-sm-3">Категория</dt>
+    <dd class="col-sm-9">@Model.Category?.Name</dd>
+
+    <dt class="col-sm-3">Минимальный запас</dt>
+    <dd class="col-sm-9">@Model.MinStock</dd>
+</dl>
+
+<a asp-action="Index">Назад</a>
+```
+
+#### Views/Products/Balances.cshtml
+
+```cshtml
+@model IEnumerable<StockBalanceViewModel>
+@{
+    ViewData["Title"] = "Остатки товаров";
+}
+
+<h2>Отчет об остатках</h2>
+
+<table class="table table-bordered table-striped">
+    <thead>
+        <tr>
+            <th>Артикул</th>
+            <th>Товар</th>
+            <th>Категория</th>
+            <th>Текущий остаток</th>
+            <th>Мин.остаток</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var item in Model)
+    {
+        <tr>
+            <td>@item.Article</td>
+            <td>@item.ProductName</td>
+            <td>@item.CategoryName</td>
+            <td>@item.CurrentStock</td>
+            <td>@item.MinStock</td>
+        </tr>
+    }
+    </tbody>
+</table>
+```
+
+#### Views/Products/ReorderList.cshtml
+
+```cshtml
+@model IEnumerable<StockBalanceViewModel>
+@{
+    ViewData["Title"] = "Товары ниже минимума";
+}
+
+<h2>Товары, требующие пополнения</h2>
+
+@if (!Model.Any())
+{
+    <p>Все товары выше минимального запаса.</p>
+}
+else
+{
+    <table class="table table-danger table-striped">
+        <thead>
+            <tr>
+                <th>Артикул</th>
+                <th>Товар</th>
+                <th>Остаток</th>
+                <th>Минимум</th>
+                <th>Дефицит</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var item in Model)
+        {
+            <tr>
+                <td>@item.Article</td>
+                <td>@item.ProductName</td>
+                <td>@item.CurrentStock</td>
+                <td>@item.MinStock</td>
+                <td>@(item.MinStock - item.CurrentStock)</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+```
+
+#### Views/StockMovements/Index.cshtml
+
+```cshtml
+@model IEnumerable<StockMovement>
+@{
+    ViewData["Title"] = "Движение товара";
+}
+
+<h2>Движение товара</h2>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Дата</th>
+            <th>Операция</th>
+            <th>Количество</th>
+            <th>Товар</th>
+            <th>Поставщик</th>
+            <th>Место хранения</th>
+            <th>Документ</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var item in Model)
+    {
+        <tr>
+            <td>@item.Date.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+            <td>@(item.OperationType == StockMovementType.Income ? "Приход" : "Расход")</td>
+            <td>@item.Quantity</td>
+            <td>@item.Product?.Name</td>
+            <td>@item.Supplier?.Name</td>
+            <td>@item.StorageLocation?.DisplayName</td>
+            <td>@item.DocumentBase</td>
+            <td><a asp-action="Details" asp-route-id="@item.Id">Подробнее</a></td>
+        </tr>
+    }
+    </tbody>
+</table>
+```
+
+#### Views/StockMovements/Details.cshtml
+
+```cshtml
+@model StockMovement
+@{
+    ViewData["Title"] = "Детали операции";
+}
+
+<h2>Операция движения</h2>
+
+<dl class="row">
+    <dt class="col-sm-3">Дата</dt>
+    <dd class="col-sm-9">@Model.Date.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</dd>
+
+    <dt class="col-sm-3">Тип операции</dt>
+    <dd class="col-sm-9">@(Model.OperationType == StockMovementType.Income ? "Приход" : "Расход")</dd>
+
+    <dt class="col-sm-3">Товар</dt>
+    <dd class="col-sm-9">@Model.Product?.Name (@Model.Product?.Article)</dd>
+
+    <dt class="col-sm-3">Поставщик</dt>
+    <dd class="col-sm-9">@Model.Supplier?.Name</dd>
+
+    <dt class="col-sm-3">Место хранения</dt>
+    <dd class="col-sm-9">@Model.StorageLocation?.DisplayName</dd>
+
+    <dt class="col-sm-3">Количество</dt>
+    <dd class="col-sm-9">@Model.Quantity</dd>
+
+    <dt class="col-sm-3">Документ-основание</dt>
+    <dd class="col-sm-9">@Model.DocumentBase</dd>
+</dl>
+
+<a asp-action="Index">Назад</a>
+```
+
+## 6. Графические представления отображения представлений в браузере
+
+По вашему решению в отчете приводится текстовое описание без изображений.
+
+Проверено отображение следующих представлений в браузере:
+- `Home/Index` - стартовая страница с описанием приложения.
+- `Products/Index` - список товаров и форма поиска.
+- `Products/Details` - карточка товара.
+- `Products/Balances` - табличный отчет об остатках.
+- `Products/ReorderList` - товары ниже минимального остатка.
+- `Categories/Index` и `Categories/Details` - список категорий и товары категории.
+- `StockMovements/Index` и `StockMovements/Details` - список и детали операций движения.
+
+Визуально страницы отображаются корректно, данные подгружаются, переходы по ссылкам работают.
+
+## 7. Графические представления результатов проверки кэширования
+
+По вашему решению в отчете приводится текстовое описание без изображений.
+
+Проверка кэширования выполнена для страниц с `ResponseCache(CacheProfileName = "WarehouseCache")`:
+- `Products/Index`
+- `Products/Balances`
+- `Products/ReorderList`
+- `Categories/Index`
+- `StockMovements/Index`
+
+Условия проверки:
+1. Открытие страницы в браузере.
+2. Анализ запросов в DevTools -> Network.
+3. Повторные обращения в пределах установленного времени кэша.
+4. Контроль кэш-заголовков и времени ответа.
+
+Результат: подтверждено применение настроенного кэширования с длительностью 268 секунд.
+
+## 8. Содержимое yml файла рабочего процесса
+
+Файл: `.github/workflows/build.yml`
+
+```yml
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+```
+
+## 9. Текст README.md файла
+
+~~~md
+# Склад стройматериалов (ASP.NET Core MVC)
+
+![Build Status](https://github.com/DimSelyutin/safonenko-database-development-lab1/actions/workflows/build.yml/badge.svg)
+
+Учебное веб-приложение для учета складских операций в предметной области стройматериалов.
+
+## Реализовано по заданию
+
+- ASP.NET Core MVC приложение с использованием DI.
+- EF Core + SQL Server (`WarehouseContext`) и миграция `InitialCreate`.
+- Модели БД:
+  - `Product` (Артикул, Название, Единица измерения, Вес, Мин. запас)
+  - `Category`
+  - `StorageLocation`
+  - `Supplier`
+  - `StockMovement` (дата, тип операции, количество, документ-основание)
+- Middleware `DatabaseSeedMiddleware` для инициализации тестовых данных.
+- Контроллеры и представления для нескольких таблиц:
+  - `ProductsController`
+  - `CategoriesController`
+  - `StockMovementsController`
+- Для таблицы на стороне "многие" (`StockMovement`) отображаются связанные смысловые значения (`Product.Name`, `Supplier.Name`, место хранения), а не только FK.
+- Дополнительные функции:
+  - поиск товара по артикулу или названию;
+  - отчет об остатках;
+  - список товаров ниже минимального запаса.
+- Кэширование страниц через `ResponseCache` с длительностью **268 секунд** (`2*N+240`, где `N=14`).
+
+## Стек
+
+- .NET 8
+- ASP.NET Core MVC
+- Entity Framework Core 8
+- SQL Server (LocalDB/Express)
+
+## Структура проекта
+
+- `Data/WarehouseContext.cs` - контекст БД
+- `Models/*` - сущности предметной области
+- `Middleware/DatabaseSeedMiddleware.cs` - заполнение тестовыми данными
+- `Controllers/*` - логика выборки и отображения
+- `Views/*` - Razor представления
+- `Migrations/*` - миграция `InitialCreate`
+
+## Запуск проекта локально
+
+1. Установить .NET SDK 8 и SQL Server LocalDB (или SQL Server Express).
+2. Обновить строку подключения в `appsettings.json` при необходимости.
+3. Выполнить миграции и запуск:
+
+```bash
+dotnet restore
+dotnet ef database update
+dotnet run
+~~~
+
+4. Открыть приложение по адресу из `launchSettings.json`.
+
+## Проверка кэширования через DevTools
+
+1. Открыть, например, страницу `/Products/Balances`.
+2. В Chrome/Firefox открыть **DevTools -> Network**.
+3. Выполнить первый запрос и зафиксировать время.
+4. Обновить страницу повторно и сравнить время ответа/статус.
+5. Проверить заголовки `Cache-Control` и `Age` (при наличии), подтверждающие кэширование `268` секунд.
+
+## GitHub Actions
+
+Workflow `build.yml` запускается при `push` и `pull_request` и собирает проект на двух платформах:
+
+- `windows-latest`
+- `ubuntu-latest`
+```
