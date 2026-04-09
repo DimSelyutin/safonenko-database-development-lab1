@@ -1,6 +1,6 @@
 # Склад стройматериалов (ASP.NET Core MVC)
 
-![Build Status](https://github.com/gstu/safonenko/actions/workflows/build.yml/badge.svg)
+![Build Status](https://github.com/DimSelyutin/safonenko-database-development-lab1/actions/workflows/build.yml/badge.svg)
 
 Учебное веб-приложение для учета складских операций в предметной области стройматериалов.
 
